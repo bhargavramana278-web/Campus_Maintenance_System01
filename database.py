@@ -245,6 +245,31 @@ def add_maintenance_record(complaint_id, staff_name, repair_date, cost, remarks)
     conn.commit()
     conn.close()
 
+def fetch_all_maintenance():
+    """Fetch all maintenance records joined with complaint info."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT m.complaint_id, c.category, m.staff_name, m.repair_date, m.cost, m.remarks, c.building, c.room_no
+        FROM maintenance m
+        LEFT JOIN complaints c ON m.complaint_id = c.complaint_id
+        ORDER BY m.id DESC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def delete_complaint(complaint_id):
+    """Delete a complaint and its associated maintenance records."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM maintenance WHERE complaint_id = ?", (complaint_id,))
+    cursor.execute("DELETE FROM complaints WHERE complaint_id = ?", (complaint_id,))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
+
 def seed_sample_data():
     """Populate initial sample complaints if table is empty."""
     conn = get_connection()

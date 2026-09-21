@@ -134,6 +134,7 @@ class CampusMaintenanceApp:
                 ("All Tickets", self.show_view_all),
                 ("Search / Update", self.show_search_update),
                 ("Maintenance Log", self.show_maintenance_log),
+                ("Repair History", self.show_repair_history),
                 ("Reports", self.show_reports),
             ]
 
@@ -752,11 +753,22 @@ class CampusMaintenanceApp:
         btn_upd = tk.Button(frame_upd, text="Save Status", font=("Helvetica", 10, "bold"), fg=COLOR_BG, bg=COLOR_ACCENT, bd=0, padx=10, cursor="hand2", command=lambda: self.save_status(record[1]))
         btn_upd.pack(side="left", padx=10)
 
+        btn_del = tk.Button(frame_upd, text="🗑 Delete Ticket", font=("Helvetica", 10, "bold"), fg=COLOR_TEXT, bg=COLOR_DANGER, bd=0, padx=10, cursor="hand2", command=lambda: self.delete_ticket(record[1]))
+        btn_del.pack(side="right", padx=10)
+
     def save_status(self, cid):
         new_status = self.combo_new_status.get()
         if db.update_status(cid, new_status):
             messagebox.showinfo("Success", f"Status for {cid} updated to '{new_status}'.")
             self.perform_search()
+
+    def delete_ticket(self, cid):
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to permanently delete ticket {cid}?\nThis action cannot be undone."):
+            if db.delete_complaint(cid):
+                messagebox.showinfo("Deleted", f"Ticket {cid} has been permanently deleted.")
+                self.show_search_update()
+            else:
+                messagebox.showerror("Error", f"Could not delete ticket {cid}.")
 
     # ==========================================
     # --- SCREEN 5: ADD MAINTENANCE LOG ---
@@ -809,6 +821,68 @@ class CampusMaintenanceApp:
         db.add_maintenance_record(cid, staff, rdate, cost, remarks)
         messagebox.showinfo("Success", f"Maintenance details added and {cid} marked as Resolved!")
         self.show_maintenance_log()
+
+    # ==========================================
+    # --- SCREEN: REPAIR HISTORY VIEWER ---
+    # ==========================================
+    def show_repair_history(self):
+        """View all past maintenance/repair records."""
+        self.clear_container()
+
+        lbl_head = tk.Label(self.container, text="Repair & Maintenance History", font=("Helvetica", 14, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
+        lbl_head.pack(anchor="w", pady=(5, 10))
+
+        raw_records = db.fetch_all_maintenance()
+
+        # Filter bar
+        filter_bar = tk.Frame(self.container, bg=COLOR_PANEL, padx=12, pady=10)
+        filter_bar.pack(fill="x", pady=(0, 10))
+
+        tk.Label(filter_bar, text="🔍 Search:", font=("Helvetica", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_PANEL).pack(side="left", padx=(0, 5))
+        ent_search = tk.Entry(filter_bar, font=("Helvetica", 9), width=20)
+        ent_search.pack(side="left", padx=(0, 15))
+
+        lbl_count = tk.Label(filter_bar, text="", font=("Helvetica", 9), fg=COLOR_MUTED, bg=COLOR_PANEL)
+        lbl_count.pack(side="right", padx=5)
+
+        # Total cost display
+        total_cost = sum(r[4] for r in raw_records if r[4])
+        lbl_total = tk.Label(filter_bar, text=f"Total Expenditure: ₹{total_cost:,.2f}", font=("Helvetica", 9, "bold"), fg=COLOR_SUCCESS, bg=COLOR_PANEL)
+        lbl_total.pack(side="right", padx=15)
+
+        cols = ("Ticket ID", "Category", "Building", "Room", "Staff Name", "Repair Date", "Cost (₹)", "Remarks")
+        tree = ttk.Treeview(self.container, columns=cols, show="headings", height=14)
+
+        col_widths = {"Ticket ID": 80, "Category": 95, "Building": 100, "Room": 60, "Staff Name": 120, "Repair Date": 100, "Cost (₹)": 85, "Remarks": 180}
+        for col in cols:
+            tree.heading(col, text=col)
+            tree.column(col, width=col_widths.get(col, 95), anchor="center")
+
+        tree.pack(fill="both", expand=True)
+        self.configure_tree_tags(tree)
+
+        def refresh(*args):
+            query = ent_search.get().strip().lower()
+            for item in tree.get_children():
+                tree.delete(item)
+            count = 0
+            for i, r in enumerate(raw_records):
+                # r: (complaint_id, category, staff_name, repair_date, cost, remarks, building, room_no)
+                cid, cat, staff, rdate, cost, remarks, bldg, room = r
+                row_text = f"{cid} {cat} {staff} {rdate} {bldg} {room} {remarks}".lower()
+                if query and query not in row_text:
+                    continue
+                display = (cid, cat or "—", bldg or "—", room or "—", staff, rdate, f"₹{cost:,.2f}", remarks or "—")
+                row_tag = "row_even" if count % 2 == 0 else "row_odd"
+                tree.insert("", tk.END, values=display, tags=(row_tag,))
+                count += 1
+            lbl_count.config(text=f"Showing {count} of {len(raw_records)} records")
+
+        ent_search.bind("<KeyRelease>", refresh)
+        refresh()
+
+        if not raw_records:
+            tk.Label(self.container, text="No maintenance records found yet.", font=("Helvetica", 11), fg=COLOR_MUTED, bg=COLOR_BG).pack(pady=15)
 
     # ==========================================
     # --- SCREEN 6: REPORTS & ANALYTICS ---
