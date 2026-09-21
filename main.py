@@ -12,17 +12,21 @@ COLOR_BTN = "#415a77"
 COLOR_MUTED = "#8d99ae"
 COLOR_DANGER = "#e63946"
 COLOR_SUCCESS = "#4cb963"
+COLOR_WARNING = "#f39c12"
 
 class CampusMaintenanceApp:
     def __init__(self, root):
         self.root = root
         self.root.title("CampusFix — Maintenance Control System")
-        self.root.geometry("980x660")
-        self.root.minsize(900, 600)
+        self.root.geometry("1040x680")
+        self.root.minsize(940, 620)
         self.root.configure(bg=COLOR_BG)
 
         # Active Session
         self.current_user = None
+
+        # Setup TTK Theme & Treeview Styles
+        self.setup_ttk_styles()
 
         # Initialize Database
         db.init_db()
@@ -34,6 +38,35 @@ class CampusMaintenanceApp:
 
         self.create_shell()
         self.show_login_screen()
+
+    def setup_ttk_styles(self):
+        """Configure ttk styles for dark theme Treeviews and Comboboxes."""
+        style = ttk.Style()
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+
+        # Dark theme Treeview
+        style.configure(
+            "Treeview",
+            background=COLOR_PANEL,
+            foreground=COLOR_TEXT,
+            fieldbackground=COLOR_PANEL,
+            rowheight=28,
+            font=("Helvetica", 9),
+            borderwidth=0
+        )
+        style.configure(
+            "Treeview.Heading",
+            background="#24334a",
+            foreground=COLOR_ACCENT,
+            font=("Helvetica", 10, "bold"),
+            relief="flat",
+            padding=5
+        )
+        style.map("Treeview", background=[("selected", "#3d5a80")], foreground=[("selected", "#ffffff")])
+        style.map("Treeview.Heading", background=[("active", "#314463")])
 
     def create_shell(self):
         """Create main persistent layout frames."""
@@ -121,7 +154,6 @@ class CampusMaintenanceApp:
         self.update_header()
         self.update_navigation()
 
-        # Center wrapper
         wrapper = tk.Frame(self.container, bg=COLOR_BG)
         wrapper.pack(expand=True)
 
@@ -290,7 +322,7 @@ class CampusMaintenanceApp:
 
         cards = [
             ("My Total Tickets", metrics["total"], COLOR_ACCENT),
-            ("Pending Review", metrics["pending"], "#f39c12"),
+            ("Pending Review", metrics["pending"], COLOR_WARNING),
             ("In Progress", metrics["in_progress"], "#3498db"),
             ("Resolved / Fixed", metrics["resolved"], COLOR_SUCCESS),
         ]
@@ -327,33 +359,106 @@ class CampusMaintenanceApp:
         btn_my_tickets.pack(side="left")
 
     # ==========================================
+    # --- HELPER: CONFIGURE TREE TAGS ---
+    # ==========================================
+    def configure_tree_tags(self, tree):
+        """Attach color-coded status badges and styling to Treeview tags."""
+        tree.tag_configure("status_pending", foreground="#ff6b6b")
+        tree.tag_configure("status_in_progress", foreground="#f39c12")
+        tree.tag_configure("status_resolved", foreground="#4cb963")
+        tree.tag_configure("row_even", background="#172235")
+        tree.tag_configure("row_odd", background="#1b263b")
+
+    # ==========================================
     # --- SCREEN: MY TICKETS (STUDENT ONLY) ---
     # ==========================================
     def show_my_tickets(self):
-        """Displays only tickets submitted by the logged-in student."""
+        """Displays tickets submitted by logged-in student with live search."""
         self.clear_container()
 
         lbl_head = tk.Label(self.container, text="My Maintenance Tickets", font=("Helvetica", 14, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
-        lbl_head.pack(anchor="w", pady=10)
+        lbl_head.pack(anchor="w", pady=(5, 10))
+
+        raw_records = db.fetch_student_complaints(self.current_user["username"])
+
+        # Filter bar
+        filter_bar = tk.Frame(self.container, bg=COLOR_PANEL, padx=12, pady=10)
+        filter_bar.pack(fill="x", pady=(0, 10))
+
+        tk.Label(filter_bar, text="🔍 Search:", font=("Helvetica", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_PANEL).pack(side="left", padx=(0, 5))
+        ent_search = tk.Entry(filter_bar, font=("Helvetica", 9), width=20)
+        ent_search.pack(side="left", padx=(0, 15))
+
+        tk.Label(filter_bar, text="Status:", font=("Helvetica", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_PANEL).pack(side="left", padx=(0, 5))
+        combo_status = ttk.Combobox(filter_bar, values=["All Statuses", "Pending", "In Progress", "Resolved"], state="readonly", width=14)
+        combo_status.set("All Statuses")
+        combo_status.pack(side="left", padx=(0, 15))
+
+        lbl_count = tk.Label(filter_bar, text="", font=("Helvetica", 9), fg=COLOR_MUTED, bg=COLOR_PANEL)
+        lbl_count.pack(side="right", padx=5)
 
         cols = ("Ticket ID", "Building", "Room", "Category", "Priority", "Status", "Date Submitted")
-        tree = ttk.Treeview(self.container, columns=cols, show="headings", height=15)
+        tree = ttk.Treeview(self.container, columns=cols, show="headings", height=14)
 
         for col in cols:
             tree.heading(col, text=col)
             tree.column(col, width=120, anchor="center")
 
         tree.pack(fill="both", expand=True)
+        self.configure_tree_tags(tree)
 
-        records = db.fetch_student_complaints(self.current_user["username"])
-        if not records:
-            lbl_empty = tk.Label(self.container, text="You have not submitted any complaints yet.", font=("Helvetica", 11), fg=COLOR_MUTED, bg=COLOR_BG)
-            lbl_empty.pack(pady=20)
-        else:
-            for r in records:
+        def refresh_table(*args):
+            query = ent_search.get().strip().lower()
+            sel_status = combo_status.get()
+
+            for item in tree.get_children():
+                tree.delete(item)
+
+            count = 0
+            for i, r in enumerate(raw_records):
                 # r: (complaint_id, student_name, department, building, room_no, category, priority, status, date)
-                display_row = (r[0], r[3], r[4], r[5], r[6], r[7], r[8])
-                tree.insert("", tk.END, values=display_row)
+                cid, _, _, bldg, room, cat, prio, status, date = r
+
+                # Apply Filters
+                if sel_status != "All Statuses" and status != sel_status:
+                    continue
+
+                combined_text = f"{cid} {bldg} {room} {cat} {prio} {status} {date}".lower()
+                if query and query not in combined_text:
+                    continue
+
+                display_row = (cid, bldg, room, cat, prio, f"● {status}", date)
+                status_tag = f"status_{status.lower().replace(' ', '_')}"
+                row_tag = "row_even" if count % 2 == 0 else "row_odd"
+
+                tree.insert("", tk.END, values=display_row, tags=(status_tag, row_tag))
+                count += 1
+
+            lbl_count.config(text=f"Showing {count} of {len(raw_records)} tickets")
+
+        ent_search.bind("<KeyRelease>", refresh_table)
+        combo_status.bind("<<ComboboxSelected>>", refresh_table)
+
+        # Double click to view details
+        def on_ticket_double_click(event):
+            item = tree.selection()
+            if not item:
+                return
+            vals = tree.item(item[0], "values")
+            cid = vals[0]
+            rec = db.search_complaint_by_id(cid)
+            if rec:
+                details = (
+                    f"Ticket ID: {rec[1]}\n"
+                    f"Category: {rec[6]}  |  Priority: {rec[8]}\n"
+                    f"Location: {rec[4]} (Room {rec[5]})\n"
+                    f"Status: {rec[9]}  |  Submitted: {rec[10]}\n\n"
+                    f"Problem Reported:\n{rec[7]}"
+                )
+                messagebox.showinfo(f"Ticket Details — {cid}", details)
+
+        tree.bind("<Double-1>", on_ticket_double_click)
+        refresh_table()
 
     # ==========================================
     # --- SCREEN 1: CAMPUS-WIDE DASHBOARD ---
@@ -410,7 +515,6 @@ class CampusMaintenanceApp:
         ]
 
         self.form_widgets = {}
-
         is_student = (self.current_user and self.current_user.get("role") == "student")
 
         for i, (label_text, widget_key) in enumerate(fields):
@@ -479,25 +583,124 @@ class CampusMaintenanceApp:
             self.show_register()
 
     # ==========================================
-    # --- SCREEN 3: VIEW ALL COMPLAINTS ---
+    # --- SCREEN 3: VIEW ALL COMPLAINTS (ENHANCED) ---
     # ==========================================
     def show_view_all(self):
+        """Displays all campus tickets with live search, filters, and color badges."""
         self.clear_container()
 
         lbl_head = tk.Label(self.container, text="All Campus Complaints", font=("Helvetica", 14, "bold"), fg=COLOR_ACCENT, bg=COLOR_BG)
-        lbl_head.pack(anchor="w", pady=10)
+        lbl_head.pack(anchor="w", pady=(5, 10))
 
+        raw_records = db.fetch_all_complaints()
+
+        # Filter Toolbar Frame
+        filter_bar = tk.Frame(self.container, bg=COLOR_PANEL, padx=12, pady=10)
+        filter_bar.pack(fill="x", pady=(0, 10))
+
+        # Search box
+        tk.Label(filter_bar, text="🔍 Search:", font=("Helvetica", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_PANEL).pack(side="left", padx=(0, 5))
+        ent_search = tk.Entry(filter_bar, font=("Helvetica", 9), width=18)
+        ent_search.pack(side="left", padx=(0, 12))
+
+        # Status Filter
+        tk.Label(filter_bar, text="Status:", font=("Helvetica", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_PANEL).pack(side="left", padx=(0, 5))
+        combo_status = ttk.Combobox(filter_bar, values=["All Statuses", "Pending", "In Progress", "Resolved"], state="readonly", width=13)
+        combo_status.set("All Statuses")
+        combo_status.pack(side="left", padx=(0, 12))
+
+        # Category Filter
+        tk.Label(filter_bar, text="Category:", font=("Helvetica", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_PANEL).pack(side="left", padx=(0, 5))
+        combo_cat = ttk.Combobox(filter_bar, values=["All Categories", "Electrical", "Furniture", "Plumbing", "IT", "Internet", "Cleaning", "AC/Cooling", "Other"], state="readonly", width=14)
+        combo_cat.set("All Categories")
+        combo_cat.pack(side="left", padx=(0, 12))
+
+        # Priority Filter
+        tk.Label(filter_bar, text="Priority:", font=("Helvetica", 9, "bold"), fg=COLOR_TEXT, bg=COLOR_PANEL).pack(side="left", padx=(0, 5))
+        combo_prio = ttk.Combobox(filter_bar, values=["All Priorities", "High", "Medium", "Low"], state="readonly", width=12)
+        combo_prio.set("All Priorities")
+        combo_prio.pack(side="left", padx=(0, 12))
+
+        # Reset button
+        def reset_filters():
+            ent_search.delete(0, tk.END)
+            combo_status.set("All Statuses")
+            combo_cat.set("All Categories")
+            combo_prio.set("All Priorities")
+            apply_filter()
+
+        btn_reset = tk.Button(filter_bar, text="Reset", font=("Helvetica", 8, "bold"), fg=COLOR_TEXT, bg=COLOR_BTN, bd=0, padx=8, pady=3, cursor="hand2", command=reset_filters)
+        btn_reset.pack(side="left")
+
+        # Result Counter
+        lbl_count = tk.Label(filter_bar, text="", font=("Helvetica", 9), fg=COLOR_MUTED, bg=COLOR_PANEL)
+        lbl_count.pack(side="right", padx=5)
+
+        # Complaints Table
         cols = ("ID", "Student Name", "Department", "Building", "Room", "Category", "Priority", "Status", "Date")
-        tree = ttk.Treeview(self.container, columns=cols, show="headings", height=15)
+        tree = ttk.Treeview(self.container, columns=cols, show="headings", height=14)
 
+        col_widths = {"ID": 80, "Student Name": 125, "Department": 75, "Building": 105, "Room": 65, "Category": 100, "Priority": 80, "Status": 110, "Date": 95}
         for col in cols:
             tree.heading(col, text=col)
-            tree.column(col, width=95, anchor="center")
+            tree.column(col, width=col_widths.get(col, 95), anchor="center")
 
         tree.pack(fill="both", expand=True)
+        self.configure_tree_tags(tree)
 
-        for record in db.fetch_all_complaints():
-            tree.insert("", tk.END, values=record)
+        # Dynamic Filtering logic
+        def apply_filter(*args):
+            query = ent_search.get().strip().lower()
+            sel_status = combo_status.get()
+            sel_cat = combo_cat.get()
+            sel_prio = combo_prio.get()
+
+            for item in tree.get_children():
+                tree.delete(item)
+
+            matched_count = 0
+            for i, r in enumerate(raw_records):
+                # r: (complaint_id, student_name, department, building, room_no, category, priority, status, date)
+                cid, sname, dept, bldg, room, cat, prio, status, dt = r
+
+                if sel_status != "All Statuses" and status != sel_status:
+                    continue
+                if sel_cat != "All Categories" and cat != sel_cat:
+                    continue
+                if sel_prio != "All Priorities" and prio != sel_prio:
+                    continue
+
+                row_search_text = f"{cid} {sname} {dept} {bldg} {room} {cat} {prio} {status} {dt}".lower()
+                if query and query not in row_search_text:
+                    continue
+
+                status_tag = f"status_{status.lower().replace(' ', '_')}"
+                row_tag = "row_even" if matched_count % 2 == 0 else "row_odd"
+
+                display_row = (cid, sname, dept, bldg, room, cat, prio, f"● {status}", dt)
+                tree.insert("", tk.END, values=display_row, tags=(status_tag, row_tag))
+                matched_count += 1
+
+            lbl_count.config(text=f"Showing {matched_count} of {len(raw_records)} tickets")
+
+        ent_search.bind("<KeyRelease>", apply_filter)
+        combo_status.bind("<<ComboboxSelected>>", apply_filter)
+        combo_cat.bind("<<ComboboxSelected>>", apply_filter)
+        combo_prio.bind("<<ComboboxSelected>>", apply_filter)
+
+        # Double click to open Search / Update for that ticket
+        def on_row_double_click(event):
+            item = tree.selection()
+            if not item:
+                return
+            vals = tree.item(item[0], "values")
+            ticket_id = vals[0]
+            self.show_search_update()
+            self.ent_search_id.insert(0, ticket_id)
+            self.perform_search()
+
+        tree.bind("<Double-1>", on_row_double_click)
+        apply_filter()
 
     # ==========================================
     # --- SCREEN 4: SEARCH & UPDATE STATUS ---

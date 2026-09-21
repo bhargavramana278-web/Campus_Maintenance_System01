@@ -4,22 +4,31 @@ A desktop campus maintenance ticket management and analytics system built with P
 
 ## Key Features
 
+### 🔍 Live Search & Dynamic Filtering
+- **Multi-Field Live Search**: Type ticket ID, student name, building, room number, or category to instantly filter records as you type.
+- **Dropdown Filters**: Real-time filtering by **Status** (Pending, In Progress, Resolved), **Category** (Electrical, Plumbing, IT, etc.), and **Priority** (High, Medium, Low).
+- **Color-Coded Status Badges**:
+  - 🔴 **Pending**: Crimson badge
+  - 🟡 **In Progress**: Amber/Orange badge
+  - 🟢 **Resolved**: Emerald Green badge
+- **Interactive Double-Click**: Double-click any row to view full details or jump straight to status update.
+
 ### 🔐 Role-Based Access Control & Authentication
 - **Student Portal**:
-  - Personal dashboard tracking individual ticket statuses (Pending, In Progress, Resolved).
-  - Lodge new maintenance tickets with student details automatically authenticated and secured.
-  - View personal complaint history with real-time status updates.
+  - Personal dashboard tracking individual ticket counts (Pending, In Progress, Resolved).
+  - Lodge new maintenance tickets with student credentials verified.
+  - View personal complaint history with live search and status updates.
   - Self-registration for new students.
 - **Admin & Staff Portal**:
   - Campus-wide metrics and total expenditure tracking.
-  - Master list of all complaints across departments and buildings.
+  - Master list of all complaints across departments and buildings with instant filtering.
   - Search tickets by ID and update status.
-  - Maintenance logger: records staff name, repair date, cost, and remarks.
+  - Maintenance logger: records staff name, repair date, cost (₹), and remarks.
   - Analytics dashboard with dark-themed Matplotlib charts.
   - One-click CSV export.
 
 ### 🔑 Default Demo Accounts
-For instant evaluation and testing, one-click demo login buttons are provided on the sign-in screen:
+One-click demo login buttons are provided on the sign-in screen:
 
 | Role | Username | Password | Access Level |
 | :--- | :--- | :--- | :--- |
@@ -29,7 +38,7 @@ For instant evaluation and testing, one-click demo login buttons are provided on
 
 ## Tech Stack
 
-- **GUI**: Python Tkinter & ttk
+- **GUI**: Python Tkinter & ttk (Dark Theme styling)
 - **Security**: SHA-256 password hashing
 - **Database**: SQLite3
 - **Analytics & Data Processing**: Pandas
@@ -59,7 +68,7 @@ For instant evaluation and testing, one-click demo login buttons are provided on
 Campus_Maintenance_System01/
 ├── analysis.py          # Data analysis, chart generation, and CSV export
 ├── database.py          # SQLite database schema, user auth, and CRUD operations
-├── main.py              # Tkinter UI, authentication views, and role-based workflows
+├── main.py              # Tkinter UI, authentication views, and live search tables
 ├── requirements.txt     # Python package requirements
 ├── .gitignore           # Git ignore configuration
 ├── data/                # SQLite database storage
